@@ -13,20 +13,7 @@ export function Navbar() {
         <Link href="/" className="text-sm font-semibold tracking-tight">
           Employee Engagement Pulse
         </Link>
-        <div className="ml-auto flex items-center gap-2">
-          <Link
-            href="/insights"
-            className="text-sm text-foreground/80 hover:text-foreground"
-          >
-            Insights
-          </Link>
-          <Link
-            href="/settings"
-            className="text-sm text-foreground/80 hover:text-foreground"
-          >
-            Settings
-          </Link>
-        </div>
+        <div className="ml-auto" />
       </div>
     </header>
   );

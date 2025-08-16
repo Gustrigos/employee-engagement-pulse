@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { Gauge, Settings, Lightbulb } from "lucide-react";
+import { Gauge, Settings, Lightbulb, BarChart4 } from "lucide-react";
 
 const navItems = [
   { href: "/dashboard", label: "Overview", icon: Gauge },
   { href: "/insights", label: "Insights", icon: Lightbulb },
+  { href: "/metrics", label: "Metrics", icon: BarChart4 },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
