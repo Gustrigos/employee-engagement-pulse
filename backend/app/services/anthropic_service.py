@@ -5,6 +5,7 @@ from typing import Any, Optional, Type, TypeVar
 import logging
 
 import httpx
+from anthropic import AsyncAnthropic  # type: ignore
 
 from app.core.config import get_settings
 from app.models.pydantic_types import (
@@ -33,12 +34,15 @@ class AnthropicService:
         self.settings = get_settings()
 
     async def _http(self) -> httpx.AsyncClient:
+        # Allow overriding base URL for testing; default to official endpoint
+        base_url = self.settings.anthropic_api_base or "https://api.anthropic.com"
         headers = {
             "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
         }
         if self.settings.anthropic_api_key:
             headers["x-api-key"] = self.settings.anthropic_api_key
-        return httpx.AsyncClient(base_url="https://api.anthropic.com", timeout=60, headers=headers)
+        return httpx.AsyncClient(base_url=base_url, timeout=60, headers=headers)
 
     @staticmethod
     def _extract_text_from_response(data: dict[str, Any]) -> str:
@@ -124,30 +128,33 @@ class AnthropicService:
                 "Anthropic API key is not configured. Set ANTHROPIC_API_KEY in the backend environment."
             )
 
-        payload = {
-            "model": selected_model,
-            "max_tokens": int(selected_max_tokens),
-            "temperature": float(selected_temp),
-            "system": system_text,
-            "messages": [
-                {"role": "user", "content": [{"type": "text", "text": user_text}]}
-            ],
-        }
+        # Prefer official SDK to avoid wire/compat issues
+        client_kwargs: dict[str, object] = {"api_key": self.settings.anthropic_api_key or ""}
+        if self.settings.anthropic_api_base:
+            client_kwargs["base_url"] = self.settings.anthropic_api_base
+        client = AsyncAnthropic(**client_kwargs)  # type: ignore[arg-type]
 
         logging.getLogger(__name__).debug(
-            "anthropic: request model=%s temp=%s max_tokens=%s",
+            "anthropic: request(model=%s, temp=%s, max_tokens=%s)",
             selected_model,
             selected_temp,
             selected_max_tokens,
         )
-        async with await self._http() as http:
-            resp = await http.post("/v1/messages", json=payload)
-            logging.getLogger(__name__).debug("anthropic: status=%s", resp.status_code)
-            resp.raise_for_status()
-            data = resp.json()
-        logging.getLogger(__name__).debug("anthropic: raw response keys=%s", list(data.keys()))
-
-        text = self._extract_text_from_response(data)
+        resp = await client.messages.create(
+            model=selected_model,
+            max_tokens=int(selected_max_tokens),
+            temperature=float(selected_temp),
+            system=system_text,
+            messages=[{"role": "user", "content": user_text}],
+        )
+        # Extract concatenated text blocks
+        blocks = getattr(resp, "content", []) or []
+        texts: list[str] = []
+        for b in blocks:
+            t = getattr(b, "text", None)
+            if isinstance(t, str):
+                texts.append(t)
+        text = "\n".join(texts)
         parsed = self._coerce_json(text)
         # Validate using the provided Pydantic model class
         return schema_model.model_validate(parsed)  # type: ignore[return-value]
@@ -195,6 +202,10 @@ class AnthropicService:
                 system=system,
             )
         except Exception as exc:
+            # If explicitly disabled fallback, bubble error to caller for visibility
+            if self.settings.anthropic_disable_fallback:
+                logging.getLogger(__name__).exception("anthropic: structured call failed (no fallback): %s", exc)
+                raise
             logging.getLogger(__name__).exception("anthropic: structured call failed, using heuristic: %s", exc)
             return self._heuristic_analyze(messages)
         logging.getLogger(__name__).info(

@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     anthropic_default_model: str = "claude-3-5-sonnet-20240620"
     anthropic_max_tokens: int = 1024
     anthropic_default_temperature: float = 0.2
+    anthropic_disable_fallback: bool = False
+    anthropic_api_base: Optional[str] = None
 
 
 @lru_cache

@@ -26,6 +26,18 @@ poetry run prisma generate
 poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+### Quick Anthropic Debug (bypass FastAPI)
+
+For rapid prototyping or when server logs are not visible, use the standalone debug harness:
+
+```bash
+cd backend
+# Ensure ANTHROPIC_API_KEY is set in backend/.env or your shell
+poetry run python -m scripts.debug_anthropic
+```
+
+This prints whether the key is present and dumps the structured result or error, independent of uvicorn.
+
 ## Test
 ```bash
 poetry run pytest -q
