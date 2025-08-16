@@ -5,6 +5,7 @@ const API_BASE = (typeof window !== "undefined" && window.location.protocol === 
   ? "" // same-origin Next.js route
   : (process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 const METRICS_PREFIX = API_BASE ? "/api/v1/metrics" : "/api/metrics";
+const DASHBOARD_PREFIX = API_BASE ? "/api/v1/dashboard" : "/api/dashboard";
 
 async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -38,6 +39,36 @@ export async function fetchTopEmojis(params: { range?: "week" | "month" | "quart
   const qs = p.toString();
   const suffix = qs ? `?${qs}` : "";
   return getJson<EmojiStat[]>(`${METRICS_PREFIX}/top-emojis${suffix}`);
+}
+
+export interface SentimentPoint { date: string; label: string; avgSentiment: number; messageCount: number }
+export type RiskLevel = "Low" | "Medium" | "High";
+export interface ChannelMetric { id: string; name: string; avgSentiment: number; messages: number; threads: number; lastActivity: string; risk: RiskLevel }
+export interface KPI { avgSentiment: number; burnoutRiskCount: number; monitoredChannels: number }
+export type TimeRange = "week" | "month" | "quarter" | "year";
+
+export async function fetchDashboardTrend(params: { range?: TimeRange }) {
+  const p = new URLSearchParams();
+  if (params.range) p.set("range", params.range);
+  const qs = p.toString();
+  const suffix = qs ? `?${qs}` : "";
+  return getJson<SentimentPoint[]>(`${DASHBOARD_PREFIX}/trend${suffix}`);
+}
+
+export async function fetchDashboardChannels(params: { range?: TimeRange }) {
+  const p = new URLSearchParams();
+  if (params.range) p.set("range", params.range);
+  const qs = p.toString();
+  const suffix = qs ? `?${qs}` : "";
+  return getJson<ChannelMetric[]>(`${DASHBOARD_PREFIX}/channels${suffix}`);
+}
+
+export async function fetchDashboardKpi(params: { range?: TimeRange }) {
+  const p = new URLSearchParams();
+  if (params.range) p.set("range", params.range);
+  const qs = p.toString();
+  const suffix = qs ? `?${qs}` : "";
+  return getJson<KPI>(`${DASHBOARD_PREFIX}/kpi${suffix}`);
 }
 
 

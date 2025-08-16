@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Query
 
-from app.models.pydantic_types import Insight, InsightFilters, TimeRange
+from app.models.pydantic_types import Insight, InsightFilters, TimeRange, LLMAnalyzeMessagesRequest, LLMAnalysisSummary
+from app.services.anthropic_service import AnthropicService
 
 router = APIRouter(prefix="/insights", tags=["insights"])
 
@@ -79,3 +80,9 @@ async def get_team_insights(range: TimeRange = Query("week")) -> list[Insight]:
     )
 
     return items
+
+
+@router.post("/analyze", response_model=LLMAnalysisSummary)
+async def analyze_messages(payload: LLMAnalyzeMessagesRequest) -> LLMAnalysisSummary:
+    service = AnthropicService()
+    return await service.analyze_slack_messages(payload.messages)

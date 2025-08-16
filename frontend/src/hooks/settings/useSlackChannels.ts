@@ -1,10 +1,15 @@
 "use client";
 import * as React from "react";
 import type { SlackChannel } from "@/types/slack";
-import { fetchChannels, fetchConnection, fetchOAuthUrl, fetchSelectedChannels, postSelectChannels } from "@/lib/slack";
+import { fetchChannels, fetchConnection, fetchOAuthUrl, fetchSelectedChannels, postSelectChannels, devRehydrateInstallation } from "@/lib/slack";
 
 const CHANNELS_KEY = "trackedSlackChannels";
 const CONNECTED_KEY = "slackConnected";
+// Dev token persistence to survive backend restarts (development only)
+const DEV_TOKEN_KEY = "slackAccessToken";
+const DEV_TEAM_ID_KEY = "slackTeamId";
+const DEV_TEAM_NAME_KEY = "slackTeamName";
+const DEV_BOT_USER_ID_KEY = "slackBotUserId";
 
 function readLocalStorage<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -41,14 +46,11 @@ export function useSlackChannels() {
 
   React.useEffect(() => { writeLocalStorage(CHANNELS_KEY, channels); }, [channels]);
 
-  // Bootstrap from backend
+  // Bootstrap from backend; in development try to rehydrate server with saved token
   React.useEffect(() => {
     let aborted = false;
     (async () => {
-      try {
-        const conn = await fetchConnection();
-        if (aborted) return;
-        setIsConnected(conn.isConnected);
+      const hydrateFromServer = async () => {
         const [available, selected] = await Promise.all([
           fetchChannels().catch(() => []),
           fetchSelectedChannels().catch(() => ({ channels: [] })),
@@ -56,6 +58,41 @@ export function useSlackChannels() {
         if (aborted) return;
         setSuggestions(available);
         if (selected.channels?.length) setChannels(selected.channels);
+      };
+
+      try {
+        const conn = await fetchConnection();
+        if (aborted) return;
+        setIsConnected(conn.isConnected);
+        if (conn.isConnected) {
+          await hydrateFromServer();
+          return;
+        }
+      } catch { /* ignore */ }
+
+      // Not connected: in development, try rehydrate API with saved token
+      try {
+        if (typeof window !== "undefined" && process.env.NODE_ENV === "development") {
+          const token = window.localStorage.getItem(DEV_TOKEN_KEY);
+          const teamId = window.localStorage.getItem(DEV_TEAM_ID_KEY);
+          const teamName = window.localStorage.getItem(DEV_TEAM_NAME_KEY) || undefined;
+          const botUserId = window.localStorage.getItem(DEV_BOT_USER_ID_KEY) || undefined;
+          if (token && teamId) {
+            const conn2 = await devRehydrateInstallation({ accessToken: token, teamId, teamName, botUserId: botUserId || undefined });
+            if (!aborted && conn2.isConnected) {
+              setIsConnected(true);
+              await hydrateFromServer();
+              return;
+            }
+          }
+        }
+      } catch { /* ignore */ }
+
+      // Fallback: still fetch suggestions (may be demo data) to allow UX preview
+      try {
+        const available = await fetchChannels();
+        if (aborted) return;
+        setSuggestions(available);
       } catch { /* ignore */ }
     })();
     return () => { aborted = true; };
@@ -82,10 +119,22 @@ export function useSlackChannels() {
       }
     }
   }
-  function disconnect() {
-    // For now just clear local state; real revoke would be backend endpoint
+  async function disconnect() {
+    // For now just clear local and inform backend selection cleared
     setIsConnected(false);
     setChannels([]);
+    try { await postSelectChannels([]); } catch { /* ignore */ }
+    // Clear persisted state
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.removeItem(CONNECTED_KEY);
+        window.localStorage.removeItem(CHANNELS_KEY);
+        window.localStorage.removeItem(DEV_TOKEN_KEY);
+        window.localStorage.removeItem(DEV_TEAM_ID_KEY);
+        window.localStorage.removeItem(DEV_TEAM_NAME_KEY);
+        window.localStorage.removeItem(DEV_BOT_USER_ID_KEY);
+      } catch { /* ignore */ }
+    }
   }
 
   function addChannelByName(name: string) {

@@ -60,4 +60,11 @@ export async function fetchChannelMessages(channelId: string, opts?: { oldest?: 
   return getJson<SlackMessagesResponse>(`${SLACK_PREFIX}/channels/${encodeURIComponent(channelId)}/messages${suffix}`);
 }
 
+export async function devRehydrateInstallation(payload: { accessToken: string; teamId: string; teamName?: string; botUserId?: string }): Promise<SlackConnection> {
+  return getJson<SlackConnection>(`${SLACK_PREFIX}/dev/rehydrate`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 

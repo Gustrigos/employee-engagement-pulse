@@ -12,6 +12,7 @@ from app.models.pydantic_types import (
     TimeRange,
 )
 from app.services.slack_service import SlackService
+from app.services.anthropic_service import AnthropicService
 
 
 class MetricsService:
@@ -19,6 +20,7 @@ class MetricsService:
 
     def __init__(self) -> None:
         self.slack = SlackService()
+        self.anthropic = AnthropicService()
 
     async def _get_channel_ids(self, requested: Optional[list[str]] = None) -> list[str]:
         if requested:

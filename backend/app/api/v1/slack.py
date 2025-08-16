@@ -11,6 +11,7 @@ from app.models.pydantic_types import (
     SlackSelectedChannels,
     SlackSelectChannelsRequest,
     SlackUser,
+    SlackDevRehydrateRequest,
 )
 from app.services.slack_service import SlackService
 
@@ -48,6 +49,12 @@ async def oauth_exchange(payload: SlackOAuthExchangeRequest):
     service = SlackService()
     result = await service.handle_oauth_callback(code=payload.code, state=payload.state, override_redirect_uri=payload.redirectUri)
     return JSONResponse(content=result.model_dump())
+
+
+@router.post("/dev/rehydrate", response_model=SlackConnection)
+async def dev_rehydrate(payload: SlackDevRehydrateRequest) -> SlackConnection:
+    service = SlackService()
+    return await service.dev_rehydrate_installation(payload)
 
 
 @router.get("/channels", response_model=list[SlackChannel])

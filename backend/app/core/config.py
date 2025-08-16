@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     # Optional user scopes if needed in the future
     slack_user_scopes: Optional[str] = None
 
+    # Anthropic configuration
+    anthropic_api_key: Optional[str] = None
+    anthropic_default_model: str = "claude-3-5-sonnet-20240620"
+    anthropic_max_tokens: int = 1024
+    anthropic_default_temperature: float = 0.2
+
 
 @lru_cache
 def get_settings() -> Settings:

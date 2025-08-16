@@ -4,6 +4,7 @@ import time
 import secrets
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
+import logging
 from urllib.parse import urlencode
 
 import httpx
@@ -20,6 +21,7 @@ from app.models.pydantic_types import (
     SlackSelectChannelsRequest,
     SlackThread,
     SlackUser,
+    SlackDevRehydrateRequest,
 )
 
 
@@ -154,7 +156,30 @@ class SlackService:
             teamName=installation.team_name,
             botUserId=bot_user_id,
             returnTo=return_to,
+            devAccessToken=access_token if (self.settings.environment == "development") else None,
         )
+
+    async def dev_rehydrate_installation(self, payload: SlackDevRehydrateRequest) -> SlackConnection:
+        """
+        Development-only helper to rehydrate a Slack installation from a token
+        stored on the client side. This is useful when the API process restarts
+        and loses its in-memory token store during local development.
+        """
+        if self.settings.environment != "development":
+            # Silently ignore in non-dev to avoid accidental token ingestion
+            return SlackConnection(teamId="", teamName="", isConnected=False)
+
+        team_id = payload.teamId
+        installation = _Installation(
+            team_id=team_id,
+            team_name=(payload.teamName or team_id),
+            access_token=payload.accessToken,
+            bot_user_id=payload.botUserId,
+        )
+        _INSTALLATIONS_BY_TEAM[team_id] = installation
+        global _ACTIVE_TEAM_ID
+        _ACTIVE_TEAM_ID = team_id
+        return SlackConnection(teamId=team_id, teamName=installation.team_name, isConnected=True, botUserId=installation.bot_user_id)
 
     async def list_channels(self) -> List[SlackChannel]:
         installation = self._get_active_installation()
@@ -250,6 +275,10 @@ class SlackService:
         installation = self._get_active_installation()
         messages: list[SlackMessage] = []
         if not installation:
+            logging.getLogger(__name__).warning(
+                "slack: no active installation; returning empty message list for channel=%s",
+                channel_id,
+            )
             return SlackMessagesResponse(channelId=channel_id, messages=messages)
 
         params: dict[str, str | int] = {"channel": channel_id, "limit": limit}
@@ -265,8 +294,11 @@ class SlackService:
                 headers={"Authorization": f"Bearer {installation.access_token}"},
             )
             data = resp.json()
-        __import__("logging").getLogger(__name__).debug(
-            "slack: history channel=%s ok=%s count=%s", channel_id, data.get("ok"), len((data.get("messages") or []))
+        logging.getLogger(__name__).info(
+            "slack: history channel=%s ok=%s count=%s",
+            channel_id,
+            data.get("ok"),
+            len((data.get("messages") or [])),
         )
         if data.get("ok"):
             for m in data.get("messages", []) or []:

@@ -131,6 +131,9 @@ class SlackOAuthCallbackResult(BaseModel):
     botUserId: Optional[str] = None
     error: Optional[str] = None
     returnTo: Optional[str] = None
+    # Development-only convenience: expose token so frontend can persist locally
+    # Never set in production.
+    devAccessToken: Optional[str] = None
 
 
 class SlackOAuthExchangeRequest(BaseModel):
@@ -138,6 +141,15 @@ class SlackOAuthExchangeRequest(BaseModel):
     state: str
     # Must match the redirect_uri used in the initial Slack authorize request
     redirectUri: Optional[str] = None
+
+
+class SlackDevRehydrateRequest(BaseModel):
+    # Development-only: allows frontend to rehydrate the in-memory installation
+    # on API restart using a saved token.
+    accessToken: str
+    teamId: str
+    teamName: Optional[str] = None
+    botUserId: Optional[str] = None
 
 
 class SlackSelectChannelsRequest(BaseModel):
@@ -170,3 +182,31 @@ class EntityTotalMetric(BaseModel):
 class EmojiStat(BaseModel):
     emoji: str
     count: int
+
+
+# ===== LLM / Anthropic structured outputs =====
+
+class LLMMessageAnalysisItem(BaseModel):
+    messageId: str
+    sentiment: float = Field(description="Range -1.0 (very negative) to 1.0 (very positive)")
+    burnoutRisk: Optional[RiskLevel] = None
+    categories: Optional[list[str]] = None
+    summary: Optional[str] = None
+
+
+class LLMAnalysisSummary(BaseModel):
+    overallSentiment: float
+    burnoutRiskLevel: RiskLevel
+    items: list[LLMMessageAnalysisItem] = Field(default_factory=list)
+
+
+class LLMAnalyzeMessagesRequest(BaseModel):
+    messages: list[SlackMessage]
+
+
+# ===== Dashboard specific structured responses =====
+
+class HeatmapMatrix(BaseModel):
+    rows: list[str]
+    cols: list[str]
+    values: list[list[float]]

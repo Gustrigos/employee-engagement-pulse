@@ -1,5 +1,6 @@
 "use client";
 import * as React from "react";
+import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 async function exchange(code: string, state: string, redirectUri: string) {
@@ -11,10 +12,10 @@ async function exchange(code: string, state: string, redirectUri: string) {
     cache: "no-store",
   });
   if (!res.ok) throw new Error("exchange failed");
-  return (await res.json()) as { ok: boolean; returnTo?: string };
+  return (await res.json()) as { ok: boolean; returnTo?: string; teamId?: string; teamName?: string; botUserId?: string; devAccessToken?: string };
 }
 
-export default function SlackCallbackPage() {
+function CallbackInner() {
   const params = useSearchParams();
   const router = useRouter();
 
@@ -26,6 +27,15 @@ export default function SlackCallbackPage() {
     (async () => {
       try {
         const result = await exchange(code, state, redirectUri);
+        // Store token and team info locally for dev rehydration
+        if (result.devAccessToken && typeof window !== "undefined") {
+          try {
+            window.localStorage.setItem("slackAccessToken", result.devAccessToken);
+            if (result.teamId) window.localStorage.setItem("slackTeamId", result.teamId);
+            if (result.teamName) window.localStorage.setItem("slackTeamName", result.teamName);
+            if (result.botUserId) window.localStorage.setItem("slackBotUserId", result.botUserId);
+          } catch { /* ignore */ }
+        }
         const target = result.returnTo || "/settings";
         router.replace(target);
       } catch {
@@ -38,5 +48,13 @@ export default function SlackCallbackPage() {
     <div className="p-6">
       <p className="text-sm text-foreground/70">Completing Slack connection…</p>
     </div>
+  );
+}
+
+export default function SlackCallbackPage() {
+  return (
+    <Suspense fallback={<div className="p-6"><p className="text-sm text-foreground/70">Loading…</p></div>}>
+      <CallbackInner />
+    </Suspense>
   );
 }
