@@ -1,6 +1,8 @@
 "use client";
 import * as React from "react";
 import { getHeatmapMatrix } from "@/mocks/dashboard";
+import { useSlackChannels } from "@/hooks/settings/useSlackChannels";
+import { fetchDashboardChannels } from "@/lib/metrics";
 import type { TimeRange } from "@/types/dashboard";
 import { Lightbulb } from "lucide-react";
 
@@ -10,7 +12,38 @@ type Grouping = "channels" | "teams" | "people";
 export function HeatmapMatrix({ range = "week" as TimeRange }: { range?: TimeRange }) {
   const [metric, setMetric] = React.useState<Metric>("sentiment");
   const [grouping, setGrouping] = React.useState<Grouping>("channels");
-  const { rows, cols, values } = getHeatmapMatrix(grouping, metric, range);
+  const { channels: selectedChannels } = useSlackChannels({ eagerSuggestions: false });
+  const [rows, setRows] = React.useState<string[]>([]);
+  const [cols, setCols] = React.useState<string[]>([]);
+  const [values, setValues] = React.useState<number[][]>([]);
+
+  React.useEffect(() => {
+    let aborted = false;
+    (async () => {
+      if (grouping !== "channels" || metric !== "sentiment") {
+        const hm = getHeatmapMatrix(grouping, metric, range);
+        if (!aborted) { setRows(hm.rows); setCols(hm.cols); setValues(hm.values); }
+        return;
+      }
+      const ids = selectedChannels.map((c) => c.id);
+      if (ids.length === 0) { setRows([]); setCols([]); setValues([]); return; }
+      // Ask backend heatmap for channels sentiment across time for richer matrix
+      const qs = new URLSearchParams();
+      qs.set("range", range);
+      qs.set("grouping", "channels");
+      qs.set("metric", "sentiment");
+      qs.set("channel_ids", ids.join(","));
+      const res = await fetch(`/api/dashboard/heatmap?${qs.toString()}`, { cache: "no-store" });
+      if (!res.ok) { setRows([]); setCols([]); setValues([]); return; }
+      const hm = await res.json();
+      const data = hm as { rows: string[]; cols: string[]; values: number[][] };
+      if (aborted) return;
+      setRows(data.rows);
+      setCols(data.cols);
+      setValues(data.values);
+    })();
+    return () => { aborted = true; };
+  }, [range, grouping, metric, selectedChannels]);
 
   const cellSizePx = 14; // square size
   const gapPx = 6; // space between squares

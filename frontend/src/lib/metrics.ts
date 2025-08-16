@@ -47,28 +47,40 @@ export interface ChannelMetric { id: string; name: string; avgSentiment: number;
 export interface KPI { avgSentiment: number; burnoutRiskCount: number; monitoredChannels: number }
 export type TimeRange = "week" | "month" | "quarter" | "year";
 
-export async function fetchDashboardTrend(params: { range?: TimeRange }) {
+export async function fetchDashboardTrend(params: { range?: TimeRange; channelIds?: string[] }) {
   const p = new URLSearchParams();
   if (params.range) p.set("range", params.range);
+  if (params.channelIds?.length) p.set("channel_ids", params.channelIds.join(","));
   const qs = p.toString();
   const suffix = qs ? `?${qs}` : "";
   return getJson<SentimentPoint[]>(`${DASHBOARD_PREFIX}/trend${suffix}`);
 }
 
-export async function fetchDashboardChannels(params: { range?: TimeRange }) {
+export async function fetchDashboardChannels(params: { range?: TimeRange; channelIds?: string[] }) {
   const p = new URLSearchParams();
   if (params.range) p.set("range", params.range);
+  if (params.channelIds?.length) p.set("channel_ids", params.channelIds.join(","));
   const qs = p.toString();
   const suffix = qs ? `?${qs}` : "";
   return getJson<ChannelMetric[]>(`${DASHBOARD_PREFIX}/channels${suffix}`);
 }
 
-export async function fetchDashboardKpi(params: { range?: TimeRange }) {
+export async function fetchDashboardKpi(params: { range?: TimeRange; channelIds?: string[] }) {
   const p = new URLSearchParams();
   if (params.range) p.set("range", params.range);
+  if (params.channelIds?.length) p.set("channel_ids", params.channelIds.join(","));
   const qs = p.toString();
   const suffix = qs ? `?${qs}` : "";
   return getJson<KPI>(`${DASHBOARD_PREFIX}/kpi${suffix}`);
+}
+
+export async function fetchDashboardBurnoutSeries(params: { range?: TimeRange; channelIds?: string[] }) {
+  const p = new URLSearchParams();
+  if (params.range) p.set("range", params.range);
+  if (params.channelIds?.length) p.set("channel_ids", params.channelIds.join(","));
+  const qs = p.toString();
+  const suffix = qs ? `?${qs}` : "";
+  return getJson<{ label: string; series: Record<string, { label: string; value: number }[]> }>(`${DASHBOARD_PREFIX}/burnout-series${suffix}`);
 }
 
 

@@ -3,13 +3,29 @@ import * as React from "react";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from "recharts";
 import type { TimeRange } from "@/types/dashboard";
 import { getBurnoutSeries } from "@/mocks/dashboard";
+import { useSlackChannels } from "@/hooks/settings/useSlackChannels";
+import { fetchDashboardBurnoutSeries } from "@/lib/metrics";
 import { Lightbulb } from "lucide-react";
 
 type Group = "team" | "person";
 
 export function BurnoutLineChart({ range }: { range: TimeRange }) {
   const [group, setGroup] = React.useState<Group>("team");
-  const { series } = getBurnoutSeries(range, group);
+  const { channels: selectedChannels } = useSlackChannels({ eagerSuggestions: false });
+  const [series, setSeries] = React.useState<Record<string, { label: string; value: number }[]>>({});
+
+  React.useEffect(() => {
+    let aborted = false;
+    (async () => {
+      const ids = selectedChannels.map((c) => c.id);
+      if (ids.length === 0) { setSeries({}); return; }
+      // Backend provides channels-as-teams burnout series now
+      const resp = await fetchDashboardBurnoutSeries({ range, channelIds: ids });
+      if (aborted) return;
+      setSeries(resp.series);
+    })();
+    return () => { aborted = true; };
+  }, [range, selectedChannels]);
 
   const keys = Object.keys(series);
   const colors = ["#ef4444", "#f59e0b", "#22c55e", "#3b82f6", "#a855f7", "#06b6d4"]; // light palette

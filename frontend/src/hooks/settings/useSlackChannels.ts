@@ -37,7 +37,8 @@ function slugify(name: string) {
     .replace(/^-+|-+$/g, "");
 }
 
-export function useSlackChannels() {
+export function useSlackChannels(options?: { eagerSuggestions?: boolean }) {
+  const eagerSuggestions = options?.eagerSuggestions ?? true;
   const [isConnected, setIsConnected] = React.useState<boolean>(() => readLocalStorage(CONNECTED_KEY, false));
   const [channels, setChannels] = React.useState<SlackChannel[]>(() => readLocalStorage(CHANNELS_KEY, []));
   const [suggestions, setSuggestions] = React.useState<SlackChannel[]>([]);
@@ -51,10 +52,8 @@ export function useSlackChannels() {
     let aborted = false;
     (async () => {
       const hydrateFromServer = async () => {
-        const [available, selected] = await Promise.all([
-          fetchChannels().catch(() => []),
-          fetchSelectedChannels().catch(() => ({ channels: [] })),
-        ]);
+        const selected = await fetchSelectedChannels().catch(() => ({ channels: [] }));
+        const available = eagerSuggestions ? await fetchChannels().catch(() => []) : [];
         if (aborted) return;
         setSuggestions(available);
         if (selected.channels?.length) setChannels(selected.channels);
@@ -91,7 +90,7 @@ export function useSlackChannels() {
       // Do not fetch suggestions while disconnected
     })();
     return () => { aborted = true; };
-  }, []);
+  }, [eagerSuggestions]);
 
   async function connect() {
     try {

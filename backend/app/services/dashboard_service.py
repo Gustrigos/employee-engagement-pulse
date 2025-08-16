@@ -29,24 +29,28 @@ class DashboardService:
         days = 7 if time_range == "week" else 30 if time_range == "month" else 90 if time_range == "quarter" else 365
         return str(now - days * 24 * 60 * 60)
 
-    async def _fetch_recent_messages(self, *, channel_ids: Optional[list[str]] = None, oldest: Optional[str] = None) -> dict[str, list[SlackMessage]]:
+    async def _fetch_recent_messages(self, *, channel_ids: Optional[list[str]] = None, oldest: Optional[str] = None, latest: Optional[str] = None) -> dict[str, list[SlackMessage]]:
         channels = channel_ids
         if not channels:
             selected = await self.slack.get_selected_channels()
             if selected.channels:
                 channels = [c.id for c in selected.channels]
             else:
-                channels = [c.id for c in (await self.slack.list_channels())]
+                # If not connected to Slack, fall back to demo channels; otherwise avoid fan-out
+                if getattr(self.slack, "is_connected", lambda: False)():
+                    channels = []
+                else:
+                    channels = [c.id for c in (await self.slack.list_channels())]
         results: dict[str, list[SlackMessage]] = {}
         for cid in channels:
-            resp = await self.slack.get_channel_messages(channel_id=cid, oldest=oldest, limit=200)
+            resp = await self.slack.get_channel_messages(channel_id=cid, oldest=oldest, latest=latest, limit=200)
             results[cid] = resp.messages
         return results
 
-    async def compute_kpi(self, *, time_range: TimeRange) -> KPI:
+    async def compute_kpi(self, *, time_range: TimeRange, channel_ids: Optional[list[str]] = None) -> KPI:
         oldest = self._oldest_ts_for_range(time_range)
         logging.getLogger(__name__).info("dashboard: computing KPI for range=%s oldest=%s", time_range, oldest)
-        by_channel = await self._fetch_recent_messages(oldest=oldest)
+        by_channel = await self._fetch_recent_messages(channel_ids=channel_ids, oldest=oldest)
         logging.getLogger(__name__).debug("dashboard: fetched messages for %d channels", len(by_channel))
         # Aggregate sentiment via LLM per channel and overall
         channel_levels: list[RiskLevel] = []
@@ -62,13 +66,13 @@ class DashboardService:
             except Exception as exc:  # pragma: no cover
                 logging.getLogger(__name__).error("dashboard: anthropic error for channel=%s: %s", cid, exc)
         avg = 0.0 if not sentiments else sum(sentiments) / max(1, len(sentiments))
-        burnout = len([lvl for lvl in channel_levels if lvl == "High"])  # type: ignore[comparison-overlap]
+        burnout = len([lvl for lvl in channel_levels if lvl in ("Medium", "High")])  # type: ignore[comparison-overlap]
         return KPI(avgSentiment=round(avg, 2), burnoutRiskCount=burnout, monitoredChannels=len(by_channel))
 
-    async def compute_channel_metrics(self, *, time_range: TimeRange) -> list[ChannelMetric]:
+    async def compute_channel_metrics(self, *, time_range: TimeRange, channel_ids: Optional[list[str]] = None) -> list[ChannelMetric]:
         oldest = self._oldest_ts_for_range(time_range)
         logging.getLogger(__name__).info("dashboard: computing channel metrics range=%s oldest=%s", time_range, oldest)
-        by_channel = await self._fetch_recent_messages(oldest=oldest)
+        by_channel = await self._fetch_recent_messages(channel_ids=channel_ids, oldest=oldest)
         # Need names
         channel_name_map = {c.id: c.name for c in (await self.slack.list_channels())}
         out: list[ChannelMetric] = []
@@ -99,7 +103,7 @@ class DashboardService:
             )
         return out
 
-    async def compute_trend(self, *, time_range: TimeRange) -> list[SentimentPoint]:
+    async def compute_trend(self, *, time_range: TimeRange, channel_ids: Optional[list[str]] = None) -> list[SentimentPoint]:
         # Build buckets by day/week/month and analyze per bucket
         step_days = 1 if time_range in ("week", "month") else (7 if time_range == "quarter" else 30)
         steps = 7 if time_range == "week" else 30 if time_range == "month" else 12
@@ -115,7 +119,8 @@ class DashboardService:
             start = now - timedelta(days=(i + 1) * step_days)
             end = now - timedelta(days=i * step_days)
             oldest = str(int(start.timestamp()))
-            by_channel = await self._fetch_recent_messages(oldest=oldest)
+            latest = str(int(end.timestamp()))
+            by_channel = await self._fetch_recent_messages(channel_ids=channel_ids, oldest=oldest, latest=latest)
             logging.getLogger(__name__).debug(
                 "dashboard: trend bucket %d: oldest=%s channels=%d",
                 i,
@@ -158,56 +163,163 @@ class DashboardService:
             )
         return points
 
-    async def compute_burnout_series(self, *, time_range: TimeRange, group: Literal["team", "person"]) -> dict[str, object]:
-        # For MVP, reuse trend bucketization and sample warnings per group label as proxy
-        # TODO: When users and teams are mapped, aggregate by real teams/people
-        entities = ["Eng", "Design", "Support", "Product"] if group == "team" else ["Alice", "Bob", "Carol", "Diego", "Eve"]
+    async def compute_burnout_series(self, *, time_range: TimeRange, group: Literal["channels", "team", "person"] = "channels", channel_ids: Optional[list[str]] = None) -> dict[str, object]:
+        # Channels-as-teams: show risk over time per selected channel
         steps = 7 if time_range == "week" else 30 if time_range == "month" else 12
         step_days = 1 if time_range in ("week", "month") else (7 if time_range == "quarter" else 30)
-        series: dict[str, list[BurnoutPoint]] = {}
-        for idx, name in enumerate(entities):
-            arr: list[BurnoutPoint] = []
-            for i in range(steps - 1, -1, -1):
-                end = datetime.utcnow() - timedelta(days=i * step_days)
-                label = end.strftime("%a") if time_range == "week" else (str(end.day) if time_range == "month" else end.strftime("%b"))
-                # Very rough proxy using idx/i to vary values 0..2
-                arr.append(BurnoutPoint(label=label, value=((i + 1) * (idx + 2) * 97) % 3))
-            series[name] = arr
-        return {"label": "Teams" if group == "team" else "People", "series": series}
-
-    async def compute_heatmap(self, *, grouping: Literal["channels", "teams", "people"], metric: Literal["sentiment", "messages", "threads"], time_range: TimeRange) -> HeatmapMatrix:
-        # MVP: channels sentiment from LLM, teams/people placeholders similar to frontend mocks
-        if grouping == "channels":
+        selected = await self.slack.get_selected_channels()
+        if channel_ids:
+            # Filter to provided ids intersecting with selected list
+            id_set = set(channel_ids)
+            channels = [c for c in selected.channels if c.id in id_set] if selected.channels else []
+        else:
+            channels = selected.channels or []
+        # If not connected, use demo channels
+        if not channels:
             channels = await self.slack.list_channels()
-            rows = [c.name for c in channels][:8]
-        elif grouping == "teams":
-            rows = ["Eng", "Design", "Support", "Product"]
-        else:
-            rows = ["Alice", "Bob", "Carol", "Diego", "Eve"]
 
-        # Build column labels as in frontend
+        # Map id->name for labels
+        name_map = {c.id: (c.name or c.id) for c in channels}
+        series: dict[str, list[BurnoutPoint]] = {name_map[c.id]: [] for c in channels}
+
         now = datetime.utcnow()
-        if time_range == "week":
-            cols = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-        elif time_range == "month":
-            cols = ["1–7", "8–14", "15–21", "22–28", "29–31"]
-        elif time_range == "quarter":
-            cols = [(now - timedelta(weeks=w*4)).strftime("%b") for w in range(8, -1, -4)]  # 3 months
-        else:
-            cols = [(now.replace(day=1) - timedelta(days=30*i)).strftime("%b") for i in range(11, -1, -1)]
-
-        # For MVP, fill values with basic placeholders; a later pass can compute real per-cell metrics
-        values: list[list[float]] = []
-        for ri, _ in enumerate(rows):
-            row: list[float] = []
-            for ci, _ in enumerate(cols):
-                seed = (ri + 1) * (ci + 2) * 137
-                if metric == "sentiment":
-                    val = (((seed % 1000) / 1000) * 2 - 1) * 0.9
+        for i in range(steps - 1, -1, -1):
+            start = now - timedelta(days=(i + 1) * step_days)
+            end = now - timedelta(days=i * step_days)
+            oldest = str(int(start.timestamp()))
+            latest = str(int(end.timestamp()))
+            label = (
+                end.strftime("%a")
+                if time_range == "week"
+                else str(end.day)
+                if time_range == "month"
+                else end.strftime("%b")
+            )
+            for c in channels:
+                msgs = (await self.slack.get_channel_messages(channel_id=c.id, oldest=oldest, latest=latest, limit=200)).messages
+                if msgs:
+                    try:
+                        analysis = await self.anthropic.analyze_slack_messages(msgs)
+                        lvl = analysis.burnoutRiskLevel
+                        val = 2 if lvl == "High" else (1 if lvl == "Medium" else 0)
+                    except Exception as exc:  # pragma: no cover
+                        logging.getLogger(__name__).error("dashboard: anthropic error in burnout series for channel=%s: %s", c.id, exc)
+                        val = 0
                 else:
-                    val = (seed % 100) / 100
-                row.append(float(val))
-            values.append(row)
+                    val = 0
+                series[name_map[c.id]].append(BurnoutPoint(label=label, value=val))
+        label = "Channels" if group in ("channels", "team") else "People"
+        return {"label": label, "series": series}
+
+    async def compute_heatmap(self, *, grouping: Literal["channels", "teams", "people"], metric: Literal["sentiment", "messages", "threads"], time_range: TimeRange, channel_ids: Optional[list[str]] = None) -> HeatmapMatrix:
+        # Determine entities
+        selected = await self.slack.get_selected_channels()
+        channels = selected.channels or []
+        if not channels:
+            channels = await self.slack.list_channels()
+        if channel_ids:
+            channel_id_set = set(channel_ids)
+            channels = [c for c in channels if c.id in channel_id_set]
+
+        # Group mapping
+        if grouping in ("channels", "teams"):
+            # Treat teams as channels
+            rows = [c.name for c in channels]
+            # id mapping not currently needed
+        else:
+            # People: derive from selected channels' users
+            users = await self.slack.list_users()
+            # Default to all non-bot users; will filter per bucket
+            rows = [u.displayName or u.username or u.id for u in users]
+            user_id_map = { (u.displayName or u.username or u.id): u.id for u in users }
+
+        # Build bucket boundaries and labels similar to trend
+        step_days = 1 if time_range in ("week", "month") else (7 if time_range == "quarter" else 30)
+        steps = 7 if time_range == "week" else 30 if time_range == "month" else 12
+        now = datetime.utcnow()
+        buckets: list[tuple[str, str, str]] = []  # (label, oldest, latest)
+        for i in range(steps - 1, -1, -1):
+            start = now - timedelta(days=(i + 1) * step_days)
+            end = now - timedelta(days=i * step_days)
+            label = (
+                end.strftime("%a") if time_range == "week" else (str(end.day) if time_range == "month" else end.strftime("%b"))
+            )
+            buckets.append((label, str(int(start.timestamp())), str(int(end.timestamp()))))
+        cols = [b[0] for b in buckets]
+
+        # Initialize values matrix
+        values: list[list[float]] = []
+
+        if grouping in ("channels", "teams"):
+            for c in channels:
+                row_vals: list[float] = []
+                for _, oldest, latest in buckets:
+                    msgs = (await self.slack.get_channel_messages(channel_id=c.id, oldest=oldest, latest=latest, limit=200)).messages
+                    if metric == "sentiment":
+                        if msgs:
+                            try:
+                                analysis = await self.anthropic.analyze_slack_messages(msgs)
+                                row_vals.append(float(analysis.overallSentiment))
+                            except Exception:  # pragma: no cover
+                                row_vals.append(0.0)
+                        else:
+                            row_vals.append(0.0)
+                    elif metric == "messages":
+                        row_vals.append(float(len(msgs)))
+                    else:  # threads
+                        row_vals.append(float(max(0, len(msgs) // 5)))
+                values.append(row_vals)
+            rows = [c.name for c in channels]
+        else:
+            # People metrics: compute counts per user per bucket; for sentiment, use a simple heuristic
+            positive_words = {"great","good","excellent","awesome","thanks","thank you","love","nice","well done","amazing","happy","win","ship"}
+            negative_words = {"bad","terrible","awful","hate","stuck","blocked","broken","late","fail","risky","stress","stressful","overworked","burnout","exhausted","tired","anxious","deadline"}
+
+            def score_sent(text: str) -> float:
+                t = text.lower()
+                pos = sum(1 for w in positive_words if w in t)
+                neg = sum(1 for w in negative_words if w in t)
+                raw = pos - neg
+                if raw == 0:
+                    return 0.0
+                return max(-1.0, min(1.0, raw / 5.0))
+
+            # determine top users by total messages across the window to limit heatmap size
+            aggregate_counts: dict[str, int] = {}
+            # Single broad window for ranking
+            wide_msgs = []
+            oldest_all = self._oldest_ts_for_range(time_range)
+            for c in channels:
+                wide_msgs.extend((await self.slack.get_channel_messages(channel_id=c.id, oldest=oldest_all, limit=200)).messages)
+            for m in wide_msgs:
+                uid = m.userId or "unknown"
+                aggregate_counts[uid] = aggregate_counts.get(uid, 0) + 1
+            # Map to names
+            user_name_map = {v: k for k, v in user_id_map.items()} if 'user_id_map' in locals() else {}
+            top_users = sorted(aggregate_counts.items(), key=lambda kv: kv[1], reverse=True)[:8]
+            rows = [user_name_map.get(uid, uid) for uid, _ in top_users]
+            target_user_ids = [uid for uid, _ in top_users]
+
+            for uid in target_user_ids:
+                row_vals: list[float] = []
+                for _, oldest, latest in buckets:
+                    # gather user messages across selected channels in this window
+                    msgs: list[SlackMessage] = []
+                    for c in channels:
+                        m = (await self.slack.get_channel_messages(channel_id=c.id, oldest=oldest, latest=latest, limit=200)).messages
+                        msgs.extend([x for x in m if (x.userId or "") == uid])
+                    if metric == "messages":
+                        row_vals.append(float(len(msgs)))
+                    elif metric == "threads":
+                        row_vals.append(float(max(0, int(len(msgs) * 0.2))))
+                    else:  # sentiment heuristic per user
+                        if msgs:
+                            s = sum(score_sent(x.text or "") for x in msgs) / max(1, len(msgs))
+                            row_vals.append(float(s))
+                        else:
+                            row_vals.append(0.0)
+                values.append(row_vals)
+
         return HeatmapMatrix(rows=rows, cols=cols, values=values)
 
 

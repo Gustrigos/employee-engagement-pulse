@@ -23,6 +23,7 @@ from app.models.pydantic_types import (
     SlackUser,
     SlackDevRehydrateRequest,
 )
+from app.services.state_store import load_selected_channels, save_selected_channels
 
 
 # In-memory store for demo/dev. Replace with DB persistence via Prisma when ready.
@@ -58,6 +59,9 @@ def _cleanup_states(ttl_seconds: int = 600) -> None:
 class SlackService:
     def __init__(self) -> None:
         self.settings = get_settings()
+
+    def is_connected(self) -> bool:
+        return self._get_active_installation() is not None
 
     async def _http(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(base_url="https://slack.com/api", timeout=20)
@@ -250,9 +254,13 @@ class SlackService:
             # Allow selection in demo mode without real Slack
             for cid in payload.channelIds:
                 selected.append(SlackChannel(id=cid, name=cid))
+            # Persist demo selection under a pseudo team id
+            save_selected_channels(team_id="demo", channel_ids=payload.channelIds)
             return SlackSelectedChannels(channels=selected)
 
         installation.selected_channel_ids = set(payload.channelIds)
+        # Persist selection
+        save_selected_channels(team_id=installation.team_id, channel_ids=payload.channelIds)
         # Return rich channel info
         all_channels = await self.list_channels()
         selected_map = {c.id: c for c in all_channels}
@@ -263,10 +271,14 @@ class SlackService:
 
     async def get_selected_channels(self) -> SlackSelectedChannels:
         installation = self._get_active_installation()
-        if not installation or not installation.selected_channel_ids:
+        # Load persisted selection first
+        persisted_ids = load_selected_channels(installation.team_id) if installation else load_selected_channels("demo")
+        if installation:
+            installation.selected_channel_ids = set(persisted_ids)
+        if not persisted_ids:
             return SlackSelectedChannels(channels=[])
         all_channels = await self.list_channels()
-        selected = [c for c in all_channels if c.id in installation.selected_channel_ids]
+        selected = [c for c in all_channels if c.id in persisted_ids]
         return SlackSelectedChannels(channels=selected)
 
     async def get_channel_messages(
