@@ -1,0 +1,116 @@
+# --- Node / Frontend ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Next.js / React builds
+.next/
+out/
+dist/
+build/
+
+# Frontend env files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# --- Python / Backend ---
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Virtual environments
+.env/
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+
+# Package/build artifacts
+*.egg
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+.installed.cfg
+*.manifest
+*.spec
+*.lock
+
+# Distribution / packaging
+build/
+develop-eggs/
+dist/
+wheels/
+share/python-wheels/
+*.tar.gz
+*.zip
+*.tgz
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+*.hypothesis/
+.pytest_cache/
+
+# Jupyter / notebooks
+.ipynb_checkpoints
+*.ipynb
+
+# FastAPI / Uvicorn logs
+*.log
+logs/
+*.db
+*.sqlite3
+
+# MyPy / Type checker
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# Ruff / linting
+.ruff_cache/
+
+# --- IDE / OS junk ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# --- Optional caches ---
+.cache/
+.next/cache/
+.eslintcache
+.stylelintcache
+*.tsbuildinfo
+
+# --- Docker ---
+*.pid
+*.seed
+*.pid.lock
+docker-compose.override.yml
