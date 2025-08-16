@@ -5,7 +5,6 @@ import type { TimeRange } from "@/types/dashboard";
 import { getBurnoutSeries } from "@/mocks/dashboard";
 import { useSlackChannels } from "@/hooks/settings/useSlackChannels";
 import { fetchDashboardBurnoutSeries } from "@/lib/metrics";
-import { Lightbulb } from "lucide-react";
 
 type Group = "team" | "person";
 
@@ -68,12 +67,6 @@ export function BurnoutLineChart({ range }: { range: TimeRange }) {
             ))}
           </LineChart>
         </ResponsiveContainer>
-      </div>
-      <div className="mt-3 rounded-md bg-black/5 dark:bg-white/5 p-3 text-xs text-foreground/80 flex items-start gap-2">
-        <Lightbulb className="h-4 w-4 mt-0.5" />
-        <div>
-          Spikes clustered after hours can indicate overload. Rebalance workload and encourage using office hours threads to reduce late pings.
-        </div>
       </div>
     </div>
   );

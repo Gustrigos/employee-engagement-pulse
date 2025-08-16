@@ -2,17 +2,38 @@
 import * as React from "react";
 import type { TimeRange, RiskLevel } from "@/types/dashboard";
 import type { Insight } from "@/types/insights";
-import { getTeamInsights, getAvailableTeams } from "@/mocks/insights";
 
 export function useInsights(initialRange: TimeRange = "week") {
   const [range, setRange] = React.useState<TimeRange>(initialRange);
   const [selectedTeams, setSelectedTeams] = React.useState<string[]>([]);
   const [selectedSeverities, setSelectedSeverities] = React.useState<RiskLevel[]>([]);
   const [dismissedIds, setDismissedIds] = React.useState<Set<string>>(new Set());
+  const [raw, setRaw] = React.useState<Insight[]>([]);
 
-  const allTeams = React.useMemo(() => getAvailableTeams(), []);
+  // Fetch from backend API (proxied via Next app route)
+  React.useEffect(() => {
+    let aborted = false;
+    async function load() {
+      try {
+        const res = await fetch(`/api/insights/teams?range=${range}&limit=5`, { cache: "no-store" });
+        if (!res.ok) throw new Error(`Failed to load insights: ${res.status}`);
+        const data: Insight[] = await res.json();
+        if (!aborted) setRaw(Array.isArray(data) ? data : []);
+      } catch {
+        if (!aborted) setRaw([]);
+      }
+    }
+    load();
+    return () => {
+      aborted = true;
+    };
+  }, [range]);
 
-  const raw = React.useMemo(() => getTeamInsights(range), [range]);
+  const allTeams = React.useMemo(() => {
+    const names = new Set<string>();
+    for (const i of raw) if (i.team) names.add(i.team);
+    return Array.from(names);
+  }, [raw]);
 
   const insights = React.useMemo(() => {
     return raw

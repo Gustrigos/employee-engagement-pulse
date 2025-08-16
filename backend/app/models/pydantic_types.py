@@ -210,3 +210,27 @@ class HeatmapMatrix(BaseModel):
     rows: list[str]
     cols: list[str]
     values: list[list[float]]
+
+
+# ===== Insights structured outputs =====
+
+class LLMInsightDraft(BaseModel):
+    # All optional to make LLM parsing robust; service will normalize into Insight
+    id: Optional[str] = None
+    scope: Optional[InsightScope] = None
+    team: Optional[str] = None
+    channelId: Optional[str] = None
+    title: Optional[str] = None
+    summary: Optional[str] = None
+    recommendation: Optional[str] = None
+    severity: Optional[RiskLevel] = None
+    category: Optional[InsightCategory] = None
+    confidence: Optional[float] = None
+    tags: Optional[list[str]] = None
+    createdAt: Optional[str] = None
+    metricContext: Optional[InsightMetricContext] = None
+    range: Optional[TimeRange] = None
+
+
+class LLMGeneratedInsights(BaseModel):
+    insights: list[LLMInsightDraft] = Field(default_factory=list)

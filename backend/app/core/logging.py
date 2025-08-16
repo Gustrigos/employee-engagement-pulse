@@ -1,8 +1,9 @@
 import os
+import logging
+from logging.config import dictConfig
 
 def configure_logging() -> None:
 	level = os.getenv("LOG_LEVEL", "INFO").upper()
-	dictConfig = __import__("logging").config.dictConfig  # type: ignore[attr-defined]
 	dictConfig(
 		{
 			"version": 1,
@@ -32,10 +33,10 @@ def configure_logging() -> None:
 
 	# Optional per-module debug overrides via env flags
 	if os.getenv("DEBUG_METRICS", "").lower() in ("1", "true", "yes"):  # pragma: no cover
-		__import__("logging").getLogger("app.services.metrics_service").setLevel("DEBUG")
-		__import__("logging").getLogger("app.services.slack_service").setLevel("DEBUG")
+		logging.getLogger("app.services.metrics_service").setLevel("DEBUG")
+		logging.getLogger("app.services.slack_service").setLevel("DEBUG")
 	if os.getenv("DEBUG_ANTHROPIC", "").lower() in ("1", "true", "yes"):  # pragma: no cover
-		__import__("logging").getLogger("app.services.anthropic_service").setLevel("DEBUG")
+		logging.getLogger("app.services.anthropic_service").setLevel("DEBUG")
 	if os.getenv("DEBUG_DASHBOARD", "").lower() in ("1", "true", "yes"):  # pragma: no cover
-		__import__("logging").getLogger("app.services.dashboard_service").setLevel("DEBUG")
-		__import__("logging").getLogger("app.api.v1.dashboard").setLevel("DEBUG")
+		logging.getLogger("app.services.dashboard_service").setLevel("DEBUG")
+		logging.getLogger("app.api.v1.dashboard").setLevel("DEBUG")
