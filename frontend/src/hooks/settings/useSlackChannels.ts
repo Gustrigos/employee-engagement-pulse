@@ -88,12 +88,7 @@ export function useSlackChannels() {
         }
       } catch { /* ignore */ }
 
-      // Fallback: still fetch suggestions (may be demo data) to allow UX preview
-      try {
-        const available = await fetchChannels();
-        if (aborted) return;
-        setSuggestions(available);
-      } catch { /* ignore */ }
+      // Do not fetch suggestions while disconnected
     })();
     return () => { aborted = true; };
   }, []);
