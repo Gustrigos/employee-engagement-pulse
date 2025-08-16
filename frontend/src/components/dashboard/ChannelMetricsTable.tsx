@@ -3,7 +3,7 @@ import * as React from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useReactTable, getCoreRowModel, flexRender } from "@tanstack/react-table";
 import type { ChannelMetric } from "@/types/dashboard";
-import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Lightbulb } from "lucide-react";
 
 const columns: ColumnDef<ChannelMetric>[] = [
@@ -62,7 +62,6 @@ export function ChannelMetricsTable({ data }: { data: ChannelMetric[] }) {
             </TableRow>
           )}
         </TableBody>
-        <TableCaption>Mock data for development purposes</TableCaption>
       </Table>
       <div className="mt-3 rounded-md bg-black/5 dark:bg-white/5 p-3 text-xs text-foreground/80 flex items-start gap-2">
         <Lightbulb className="h-4 w-4 mt-0.5" />

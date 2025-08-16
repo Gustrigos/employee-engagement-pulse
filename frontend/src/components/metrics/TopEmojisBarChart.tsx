@@ -7,20 +7,7 @@ interface EmojiStat {
   count: number;
 }
 
-const MOCK: EmojiStat[] = [
-  { emoji: "👍", count: 120 },
-  { emoji: "🎉", count: 95 },
-  { emoji: "🙏", count: 70 },
-  { emoji: "❤️", count: 64 },
-  { emoji: "🔥", count: 58 },
-  { emoji: "✅", count: 52 },
-  { emoji: "😅", count: 41 },
-  { emoji: "💡", count: 36 },
-  { emoji: "🤝", count: 33 },
-  { emoji: "🧠", count: 27 },
-];
-
-export function TopEmojisBarChart({ items = MOCK }: { items?: EmojiStat[] }) {
+export function TopEmojisBarChart({ items = [] }: { items?: EmojiStat[] }) {
   const data = items.map((e) => ({ name: e.emoji, value: e.count }));
   return (
     <div className="rounded-lg border border-black/10 dark:border-white/10 p-4">

@@ -3,7 +3,7 @@ import * as React from "react";
 import type { EntityTotalMetric } from "@/types/metrics";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useReactTable, getCoreRowModel, flexRender } from "@tanstack/react-table";
-import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const columns: ColumnDef<EntityTotalMetric>[] = [
   { accessorKey: "name", header: "Name" },
@@ -44,7 +44,6 @@ export function EntityTable({ items }: { items: EntityTotalMetric[] }) {
             </TableRow>
           )}
         </TableBody>
-        <TableCaption>Mock data for development purposes</TableCaption>
       </Table>
     </div>
   );

@@ -44,4 +44,9 @@ export interface SlackConnection {
   botUserId?: string;
 }
 
+export interface SlackMessagesResponse {
+  channelId: string;
+  messages: SlackMessage[];
+}
+
 
